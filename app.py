@@ -37,6 +37,8 @@ class EmotionApp:
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model, self.labels, checkpoint = load_checkpoint(model_path, self.device)
+        self.architecture = checkpoint.get("architecture")
+        self.input_size = int(checkpoint.get("input_size", 48))
         self.face_detector = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
@@ -125,9 +127,17 @@ class EmotionApp:
         self.status.set("Đã dừng")
 
     def _predict(self, gray_face: np.ndarray) -> np.ndarray:
-        face = cv2.resize(gray_face, (48, 48), interpolation=cv2.INTER_AREA)
-        tensor = torch.from_numpy(face).float().div(127.5).sub(1.0)
-        tensor = tensor.unsqueeze(0).unsqueeze(0).to(self.device)
+        face = cv2.resize(gray_face, (self.input_size, self.input_size), interpolation=cv2.INTER_AREA)
+        if self.architecture == "resnet18":
+            # Replicate the grayscale crop into RGB and apply ImageNet normalization.
+            tensor = torch.from_numpy(face).float().div(255.0).unsqueeze(0).repeat(3, 1, 1)
+            mean = torch.tensor((0.485, 0.456, 0.406)).view(3, 1, 1)
+            std = torch.tensor((0.229, 0.224, 0.225)).view(3, 1, 1)
+            tensor = (tensor - mean) / std
+            tensor = tensor.unsqueeze(0).to(self.device)
+        else:
+            tensor = torch.from_numpy(face).float().div(127.5).sub(1.0)
+            tensor = tensor.unsqueeze(0).unsqueeze(0).to(self.device)
         with torch.inference_mode():
             probabilities = torch.softmax(self.model(tensor), dim=1)[0]
         return probabilities.cpu().numpy()
@@ -219,4 +229,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

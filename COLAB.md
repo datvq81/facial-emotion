@@ -32,6 +32,10 @@ Sửa các biến trong cell **Cấu hình** nếu đường dẫn của bạn k
 MyDrive/facial-emotion-recognition/models/emotion_cnn.pt
 ```
 
+Để GPU không phải chờ Google Drive, hãy copy file ZIP sang `/content` rồi giải nén
+dataset tại đó. Chỉ checkpoint cần lưu trên Drive. Với T4, thử batch size 1024 trước,
+sau đó tăng lên 2048 nếu không bị CUDA out of memory.
+
 Vì checkpoint nằm trên Drive, file vẫn còn nếu Colab ngắt kết nối. Để tiếp tục từ checkpoint, đặt `RESUME = True` trong cell cấu hình rồi chạy lại. `EPOCHS` là tổng số epoch mong muốn, không phải số epoch chạy thêm.
 
 ## Dùng model trên máy local

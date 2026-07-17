@@ -7,6 +7,7 @@ from typing import Sequence
 
 import torch
 from torch import nn
+from torchvision.models import ResNet18_Weights, resnet18
 
 
 DEFAULT_LABELS = [
@@ -56,12 +57,30 @@ class EmotionCNN(nn.Module):
         return self.classifier(self.features(x))
 
 
+class ResNet18Emotion(nn.Module):
+    """ImageNet-pretrained ResNet-18 adapted for the seven emotion classes."""
+
+    def __init__(self, num_classes: int = 7, pretrained: bool = False) -> None:
+        super().__init__()
+        weights = ResNet18_Weights.DEFAULT if pretrained else None
+        self.network = resnet18(weights=weights)
+        self.network.fc = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(self.network.fc.in_features, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.network(x)
+
+
 def save_checkpoint(
     path: str | Path,
     model: nn.Module,
     labels: Sequence[str],
     epoch: int,
     val_accuracy: float,
+    architecture: str = "resnet18",
+    input_size: int = 96,
 ) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,17 +90,22 @@ def save_checkpoint(
             "labels": list(labels),
             "epoch": epoch,
             "val_accuracy": val_accuracy,
-            "input_size": 48,
+            "architecture": architecture,
+            "input_size": input_size,
         },
         path,
     )
 
 
-def load_checkpoint(path: str | Path, device: torch.device) -> tuple[EmotionCNN, list[str], dict]:
+def load_checkpoint(path: str | Path, device: torch.device) -> tuple[nn.Module, list[str], dict]:
     checkpoint = torch.load(path, map_location=device, weights_only=True)
     labels = checkpoint.get("labels", DEFAULT_LABELS)
-    model = EmotionCNN(num_classes=len(labels)).to(device)
+    # Checkpoints before the ResNet migration did not contain ``architecture``.
+    # Keep them usable in the desktop app and evaluator.
+    if checkpoint.get("architecture") == "resnet18":
+        model: nn.Module = ResNet18Emotion(num_classes=len(labels), pretrained=False).to(device)
+    else:
+        model = EmotionCNN(num_classes=len(labels)).to(device)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
     return model, list(labels), checkpoint
-
